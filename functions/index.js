@@ -23,14 +23,34 @@ const pusher = new Pusher({
 
 exports.pusherAuth = functions.https.onRequest((req, res) => {
   cors(req, res, () => {
-    //console.log(req.headers.authorization);
-    var socketId = req.body.socket_id;
-    var channel = req.body.channel_name;
-    var presenceData = {
-      user_id: 'TEST_USER',
-    };
-    var auth = pusher.authenticate(socketId, channel, presenceData);
-    res.send(auth);
+    const user_id = 'TEST_USER';  // HARDCODE, todo: extract `user_id` from access token
+    const { socket_id, channel_name } = req.body;
+    
+    if (channel_name.match(/^presence\-control\-/)) {
+      pusher.get(
+        { path: `/channels/${channel_name}/users`, params: {} },
+        function(error, request, response) {
+          if (error) console.error(error)
+          if(response.statusCode === 200) {
+            var result = JSON.parse(response.body);
+            var users = result.users;
+            const me = users.find(x => x.id === user_id);
+            if (me) {
+              const message = 'Only one simultaneous control connection allowed.';
+              res.status(403).json({ message });
+            } else {
+              var presenceData = { user_id };
+              var auth = pusher.authenticate(socket_id, channel_name, presenceData);
+              res.send(auth);
+            }
+          }
+        }
+      );
+    } else {
+      var presenceData = { user_id };
+      var auth = pusher.authenticate(socket_id, channel_name, presenceData);
+      res.send(auth);
+    }
   });
 });
 
